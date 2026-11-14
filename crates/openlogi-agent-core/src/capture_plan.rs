@@ -431,6 +431,7 @@ pub fn plan_for_device(
                 divert_main_wheel: None,
                 onboard: None,
                 gesture_thresholds: config.gesture_thresholds(config_key),
+                gesture_repeat_distance: config.gesture_repeat_distance(config_key),
             },
             rearm_generation,
         },

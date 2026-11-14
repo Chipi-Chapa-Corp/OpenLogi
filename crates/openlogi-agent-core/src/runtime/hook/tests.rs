@@ -63,14 +63,24 @@ fn test_dispatcher() -> (
 /// A hold of `press` begun now.
 fn held(press: PressToken) -> PressPhase {
     PressPhase::HeldAsGesture {
-        hold: GestureHold::new(press, Instant::now(), SwipeThresholds::DEFAULT),
+        hold: GestureHold::new(
+            press,
+            Instant::now(),
+            SwipeThresholds::DEFAULT,
+            GestureRepeatDistance::default(),
+        ),
     }
 }
 
 /// A hold of `press` already past the swipe gate, so its next long-enough
 /// motion commits.
 fn held_for_swipe(press: PressToken) -> PressPhase {
-    let mut hold = GestureHold::new(press, Instant::now(), SwipeThresholds::DEFAULT);
+    let mut hold = GestureHold::new(
+        press,
+        Instant::now(),
+        SwipeThresholds::DEFAULT,
+        GestureRepeatDistance::default(),
+    );
     hold.swipe.backdate_hold_for_test();
     PressPhase::HeldAsGesture { hold }
 }
@@ -141,6 +151,59 @@ fn press_transition_truth_table() {
 // commit with the exact press and held button, and matching the release.
 
 #[test]
+fn an_os_hook_hold_snapshots_the_configured_repeat_distance() {
+    let (dispatcher, mut owner, _events) = test_dispatcher();
+    let hooks = Arc::new(RwLock::new(HookMaps {
+        gestures: BTreeMap::from([(ButtonId::Back, BTreeMap::new())]),
+        gesture_repeat_distance: GestureRepeatDistance::try_new(20).unwrap(),
+        ..HookMaps::default()
+    }));
+    let source = m650_bluetooth();
+    assert_eq!(
+        handle_button(
+            ButtonId::Back,
+            true,
+            Some(&source),
+            &hooks,
+            &dispatcher,
+            || None
+        ),
+        EventDisposition::Suppress
+    );
+    PRESSES.with_borrow_mut(|presses| {
+        let PressPhase::HeldAsGesture { hold } = presses
+            .phases
+            .get_mut(&ButtonId::Back)
+            .expect("admitted hold")
+        else {
+            panic!("gesture phase")
+        };
+        hold.swipe.backdate_hold_for_test();
+    });
+    hooks.write().unwrap().gesture_repeat_distance = GestureRepeatDistance::default();
+    PRESSES.with_borrow_mut(|presses| {
+        assert!(presses.accumulate(GESTURE_SWIPE_THRESHOLD, 0).is_some());
+        assert!(presses.accumulate(19, 0).is_none());
+        assert!(
+            presses.accumulate(1, 0).is_some(),
+            "an admitted hold keeps its 20-unit spacing"
+        );
+    });
+    assert_eq!(
+        handle_button(
+            ButtonId::Back,
+            false,
+            Some(&source),
+            &hooks,
+            &dispatcher,
+            || None
+        ),
+        EventDisposition::Suppress
+    );
+    assert!(owner.shutdown());
+}
+
+#[test]
 fn accumulate_tags_a_committed_swipe_with_the_held_press() {
     let mut presses = ButtonPresses::default();
     let press = token(1, ButtonId::Back);
@@ -170,6 +233,7 @@ fn a_configured_hold_gate_reaches_the_os_hook_hold() {
         press.clone(),
         Instant::now(),
         SwipeThresholds::DEFAULT.with_hold(GestureHoldDelay::MAX),
+        GestureRepeatDistance::default(),
     );
     hold.swipe.backdate_hold_for_test();
 
@@ -189,7 +253,12 @@ fn a_hold_applies_the_thresholds_it_began_with() {
         openlogi_core::config::GestureSensitivity::MIN,
         openlogi_core::config::GestureAxisBias::DEFAULT,
     ));
-    let mut hold = GestureHold::new(press.clone(), Instant::now(), least_sensitive);
+    let mut hold = GestureHold::new(
+        press.clone(),
+        Instant::now(),
+        least_sensitive,
+        GestureRepeatDistance::default(),
+    );
     hold.swipe.backdate_hold_for_test();
 
     assert_eq!(hold.swipe.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0), None);
@@ -232,6 +301,7 @@ fn an_aged_hold_yields_to_a_new_buttons_press() {
                 token(1, ButtonId::Back),
                 pressed_at,
                 SwipeThresholds::DEFAULT,
+                GestureRepeatDistance::default(),
             ),
         },
     );

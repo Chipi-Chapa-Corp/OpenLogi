@@ -1,7 +1,7 @@
 //! The capture accumulator: presses, taps, swipes and raw XY across the gesture sources.
 
 use super::*;
-use openlogi_core::config::{GestureAxisBias, GestureSensitivity};
+use openlogi_core::config::{GestureAxisBias, GestureRepeatDistance, GestureSensitivity};
 
 const GESTURE: &[u16] = &[reprog_controls::GESTURE_BUTTON_CID];
 
@@ -58,6 +58,7 @@ fn a_configured_hold_gate_reaches_the_hidpp_hold() {
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut acc = CaptureAccum::new(
         SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX),
+        GestureRepeatDistance::default(),
     );
     assert_eq!(
         acc.thresholds(),
@@ -950,7 +951,7 @@ fn a_hold_commits_under_the_configured_thresholds() {
         ),
     ] {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let mut acc = CaptureAccum::new(thresholds);
+        let mut acc = CaptureAccum::new(thresholds, GestureRepeatDistance::default());
         handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
         stale_report(&mut acc, &tx);
         acc.backdate_hold_for_test();
@@ -968,4 +969,62 @@ fn a_hold_commits_under_the_configured_thresholds() {
             Ok(CapturedInput::Gesture(ButtonId::GestureButton, expected))
         );
     }
+}
+
+#[test]
+fn raw_xy_gestures_repeat_at_the_configured_distance() {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut acc = CaptureAccum::new(
+        SwipeThresholds::DEFAULT,
+        GestureRepeatDistance::try_new(20).unwrap(),
+    );
+    handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
+    stale_report(&mut acc, &tx);
+    acc.backdate_hold_for_test();
+    handle_reprog(
+        &mut acc,
+        RawControlEvent::RawXy { dx: 100, dy: 0 },
+        GESTURE,
+        &[],
+        &[],
+        &tx,
+    );
+    assert_eq!(
+        next_gesture(&mut rx),
+        Ok(CapturedInput::Gesture(
+            ButtonId::GestureButton,
+            GestureDirection::Right
+        ))
+    );
+    for _ in 0..100 {
+        handle_reprog(
+            &mut acc,
+            RawControlEvent::RawXy { dx: 19, dy: 0 },
+            GESTURE,
+            &[],
+            &[],
+            &tx,
+        );
+        assert!(next_gesture(&mut rx).is_err(), "19 units must not repeat");
+        handle_reprog(
+            &mut acc,
+            RawControlEvent::RawXy { dx: 1, dy: 0 },
+            GESTURE,
+            &[],
+            &[],
+            &tx,
+        );
+        assert_eq!(
+            next_gesture(&mut rx),
+            Ok(CapturedInput::Gesture(
+                ButtonId::GestureButton,
+                GestureDirection::Right
+            ))
+        );
+    }
+    handle_reprog(&mut acc, release(), GESTURE, &[], &[], &tx);
+    assert!(
+        next_gesture(&mut rx).is_err(),
+        "release must not also click"
+    );
 }

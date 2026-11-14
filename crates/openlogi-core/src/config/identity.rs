@@ -267,6 +267,7 @@ pub(super) fn fold(device: &mut DeviceConfig, mut legacy: DeviceConfig, route_ke
         device.links.entry(key).or_insert(value);
     }
     fold_maps(device, &mut legacy, route_key);
+    fold_optional_settings(device, &mut legacy, route_key);
 
     let link = device.links.entry(route_key.to_string()).or_default();
     if let Some(capabilities) = legacy
@@ -319,46 +320,6 @@ pub(super) fn fold(device: &mut DeviceConfig, mut legacy: DeviceConfig, route_ke
         device.gaming_key_mode = legacy.gaming_key_mode;
     }
 
-    // Scalar values with no per-link override slot: take the legacy value
-    // when the canonical side is unset. A genuine disagreement keeps the
-    // canonical value — there is nowhere to park the legacy one — and is
-    // logged so the loss is visible instead of silent.
-    macro_rules! fold_option_field {
-        ($field:ident) => {
-            match (&device.$field, legacy.$field) {
-                (None, Some(value)) => device.$field = Some(value),
-                (Some(ours), Some(theirs)) if *ours != theirs => {
-                    tracing::warn!(
-                        %route_key,
-                        field = stringify!($field),
-                        "value differs between merged entries; keeping the canonical one"
-                    );
-                }
-                _ => {}
-            }
-        };
-    }
-    fold_option_field!(light);
-    fold_option_field!(camera_controls);
-    fold_option_field!(camera_profile);
-    fold_option_field!(camera_stream_mode);
-    fold_option_field!(thumbwheel_sensitivity);
-    fold_option_field!(gesture_sensitivity);
-    fold_option_field!(gesture_axis_bias);
-    fold_option_field!(momentum_scrolling);
-    fold_option_field!(fn_lock);
-    fold_option_field!(keep_os_layout);
-    fold_option_field!(onboard_memory);
-    fold_option_field!(report_rate);
-    fold_option_field!(pointer_speed);
-    fold_option_field!(force_sensing);
-    fold_option_field!(disabled_keys);
-    fold_option_field!(gesture_hold);
-    // The user-assigned alias. Without this a legacy entry carrying a name
-    // folded into a canonical entry with none would drop it silently — the
-    // one field here a user typed by hand, so the loss is the most visible.
-    fold_option_field!(custom_name);
-
     if device.identity.is_none() {
         device.identity = legacy.identity.take();
     }
@@ -404,6 +365,50 @@ pub(super) fn fold(device: &mut DeviceConfig, mut legacy: DeviceConfig, route_ke
     if device.enabled && !legacy.enabled {
         device.enabled = false;
     }
+}
+
+/// Fold scalar settings without a per-link override slot, preserving canonical choices.
+fn fold_optional_settings(device: &mut DeviceConfig, legacy: &mut DeviceConfig, route_key: &str) {
+    // Scalar values with no per-link override slot: take the legacy value
+    // when the canonical side is unset. A genuine disagreement keeps the
+    // canonical value — there is nowhere to park the legacy one — and is
+    // logged so the loss is visible instead of silent.
+    macro_rules! fold_option_field {
+        ($field:ident) => {
+            match (&device.$field, legacy.$field.take()) {
+                (None, Some(value)) => device.$field = Some(value),
+                (Some(ours), Some(theirs)) if *ours != theirs => {
+                    tracing::warn!(
+                        %route_key,
+                        field = stringify!($field),
+                        "value differs between merged entries; keeping the canonical one"
+                    );
+                }
+                _ => {}
+            }
+        };
+    }
+    fold_option_field!(light);
+    fold_option_field!(camera_controls);
+    fold_option_field!(camera_profile);
+    fold_option_field!(camera_stream_mode);
+    fold_option_field!(thumbwheel_sensitivity);
+    fold_option_field!(gesture_sensitivity);
+    fold_option_field!(gesture_axis_bias);
+    fold_option_field!(momentum_scrolling);
+    fold_option_field!(gesture_repeat_distance);
+    fold_option_field!(fn_lock);
+    fold_option_field!(keep_os_layout);
+    fold_option_field!(onboard_memory);
+    fold_option_field!(report_rate);
+    fold_option_field!(pointer_speed);
+    fold_option_field!(force_sensing);
+    fold_option_field!(disabled_keys);
+    fold_option_field!(gesture_hold);
+    // The user-assigned alias. Without this a legacy entry carrying a name
+    // folded into a canonical entry with none would drop it silently — the
+    // one field here a user typed by hand, so the loss is the most visible.
+    fold_option_field!(custom_name);
 }
 
 /// The map-valued halves of [`fold`], split out to keep that function inside
@@ -775,6 +780,9 @@ mod tests {
         // cable — that is the user-visible bug this whole change exists for.
         let mut config = Config::default();
         let legacy = DeviceConfig {
+            gesture_repeat_distance: Some(
+                super::super::GestureRepeatDistance::try_new(20).unwrap(),
+            ),
             lighting: Some(Lighting::default()),
             ..DeviceConfig::default()
         };
@@ -790,6 +798,7 @@ mod tests {
 
         let device = &config.devices["unit:6be9d300"];
         assert!(device.lighting.is_some(), "lighting moved to device level");
+        assert_eq!(device.gesture_repeat_distance.unwrap().into_inner(), 20);
         assert!(device.links.contains_key("receiver:82839805:slot:1"));
         assert!(
             !config.devices.contains_key("receiver:82839805:slot:1"),

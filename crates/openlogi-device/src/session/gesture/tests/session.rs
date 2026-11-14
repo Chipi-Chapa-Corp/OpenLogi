@@ -15,6 +15,7 @@ fn resetting_input_state_keeps_the_configured_hold_gate() {
     let capture = GestureCapture::new(
         ArmedControls::default(),
         SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX),
+        GestureRepeatDistance::default(),
     );
     capture.reset_input_state();
     let accum = capture.accum.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1705,4 +1706,12 @@ async fn zero_slots_write_no_mapping() {
         mouse.lock().unwrap().take_seen(),
         [(SET_MODE_SEEN, vec![MODE_ONBOARD, 0, 0])]
     );
+}
+
+#[test]
+fn resetting_capture_preserves_repeat_configuration() {
+    let distance = GestureRepeatDistance::try_new(20).unwrap();
+    let capture = GestureCapture::new(ArmedControls::default(), SwipeThresholds::DEFAULT, distance);
+    capture.reset_input_state();
+    assert_eq!(capture.accum.lock().unwrap().repeat_distance(), distance);
 }

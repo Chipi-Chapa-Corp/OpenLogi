@@ -5,6 +5,7 @@
 use std::num::NonZeroU8;
 
 use openlogi_core::binding::{ButtonId, GestureDirection, SwipeAccumulator, SwipeThresholds};
+use openlogi_core::config::GestureRepeatDistance;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
@@ -51,8 +52,9 @@ fn begin_hold(
     overlap: bool,
     skip_first_raw_xy: bool,
     thresholds: SwipeThresholds,
+    repeat_distance: GestureRepeatDistance,
 ) -> HoldState {
-    let mut swipe = SwipeAccumulator::default();
+    let mut swipe = SwipeAccumulator::with_repeat_distance(repeat_distance);
     swipe.begin_with_config(thresholds);
     HoldState::Holding {
         cid,
@@ -81,15 +83,21 @@ pub(super) struct CaptureAccum {
     buttons_down: Vec<u16>,
     /// The thresholds every hold's swipe accumulator starts with.
     thresholds: SwipeThresholds,
+    repeat_distance: GestureRepeatDistance,
 }
 
 impl CaptureAccum {
     /// A fresh accumulator whose holds commit under `thresholds`.
-    pub(super) fn new(thresholds: SwipeThresholds) -> Self {
+    pub(super) fn new(thresholds: SwipeThresholds, repeat_distance: GestureRepeatDistance) -> Self {
         Self {
             thresholds,
+            repeat_distance,
             ..Self::default()
         }
+    }
+
+    pub(super) fn repeat_distance(&self) -> GestureRepeatDistance {
+        self.repeat_distance
     }
 
     /// The thresholds this accumulator's holds commit under.
@@ -202,6 +210,7 @@ impl CaptureAccum {
                                 held.len() > 1,
                                 !self.gestures_down.contains(&cid),
                                 self.thresholds,
+                                self.repeat_distance,
                             ),
                             None => HoldState::Idle,
                         }

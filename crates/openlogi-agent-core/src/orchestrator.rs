@@ -1086,6 +1086,8 @@ impl Orchestrator {
             selected_route: selected.and_then(|device| device.route.clone()),
             shift_bindings,
             gesture_thresholds,
+            gesture_repeat_distance: key
+                .map_or_else(Default::default, |k| self.config.gesture_repeat_distance(k)),
             ..HookMaps::default()
         }
     }
