@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     CameraControls, CameraStreamMode, Config, DeviceIdentity, DisableKey, GKeyOwner, GamingKeyMode,
-    LightSettings, Lighting, MomentumScrolling, OnboardMemory, ScrollResolution, SmartShift,
-    ThumbwheelSensitivity,
+    GestureHold, LightSettings, Lighting, MomentumScrolling, OnboardMemory, ScrollResolution,
+    SmartShift, ThumbwheelSensitivity,
 };
 use crate::binding::{
     Action, ActionRingConfig, ActionRingIcon, ActionRingSize, ActionRingSlot, Binding, ButtonId,
@@ -752,6 +752,19 @@ impl Config {
     #[must_use]
     pub fn smooth_wheel(&self, device_key: &str) -> bool {
         self.devices.get(device_key).is_some_and(|d| d.smooth_wheel)
+    }
+
+    /// The hold gate for `device_key`'s gesture swipes: the device's
+    /// `gesture_hold`, or [`GestureHold::DEFAULT`] (160 ms) when unset.
+    ///
+    /// Both capture paths resolve the gate through this one accessor, so the
+    /// HID++ and OS-hook paths can never disagree about it.
+    #[must_use]
+    pub fn gesture_hold(&self, device_key: &str) -> GestureHold {
+        self.devices
+            .get(device_key)
+            .and_then(|device| device.gesture_hold)
+            .unwrap_or_default()
     }
 
     /// Turn `device_key`'s diverted smooth wheel on or off.

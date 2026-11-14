@@ -63,14 +63,14 @@ fn test_dispatcher() -> (
 /// A hold of `press` begun now.
 fn held(press: PressToken) -> PressPhase {
     PressPhase::HeldAsGesture {
-        hold: GestureHold::new(press, Instant::now()),
+        hold: GestureHold::new(press, Instant::now(), GestureHoldDelay::DEFAULT),
     }
 }
 
 /// A hold of `press` already past the swipe gate, so its next long-enough
 /// motion commits.
 fn held_for_swipe(press: PressToken) -> PressPhase {
-    let mut hold = GestureHold::new(press, Instant::now());
+    let mut hold = GestureHold::new(press, Instant::now(), GestureHoldDelay::DEFAULT);
     hold.swipe.backdate_hold_for_test();
     PressPhase::HeldAsGesture { hold }
 }
@@ -162,6 +162,21 @@ fn accumulate_tags_a_committed_swipe_with_the_held_press() {
 }
 
 #[test]
+fn a_configured_hold_gate_reaches_the_os_hook_hold() {
+    // Past the old fixed 320 ms backdate, so this commits only when the gate
+    // travelled from the caller into the accumulator and backdating used it.
+    let press = token(1, ButtonId::Back);
+    let mut hold = GestureHold::new(press.clone(), Instant::now(), GestureHoldDelay::MAX);
+    hold.swipe.backdate_hold_for_test();
+
+    assert_eq!(
+        hold.swipe.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0),
+        Some(GestureDirection::Right)
+    );
+    assert_eq!(hold.end(), (press, false));
+}
+
+#[test]
 fn a_same_button_repress_restarts_the_stale_hold() {
     let mut presses = ButtonPresses::default();
     let now = Instant::now();
@@ -193,7 +208,11 @@ fn an_aged_hold_yields_to_a_new_buttons_press() {
     presses.press(
         ButtonId::Back,
         PressPhase::HeldAsGesture {
-            hold: GestureHold::new(token(1, ButtonId::Back), pressed_at),
+            hold: GestureHold::new(
+                token(1, ButtonId::Back),
+                pressed_at,
+                GestureHoldDelay::DEFAULT,
+            ),
         },
     );
     assert!(

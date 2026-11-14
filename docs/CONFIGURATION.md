@@ -52,6 +52,8 @@ profiles so they keep their native direction. v9 adds the `[apps]` alias table;
 v8 files load unchanged.
 v10 adds the per-device `disabled_keys` policy. Older readers reject a v10
 header before parsing its fields. A v9 file without the policy still loads.
+v12 adds the per-device `gesture_hold` gate. Older files keep the default.
+
 v11 adds the `[flow]` section. Older readers reject a v11 header before
 parsing its fields. A v10 file without the section loads with Flow disabled.
 
@@ -177,6 +179,15 @@ Common device fields are:
   `[app_settings.momentum_scrolling]`. Absent, the mouse follows the app-wide
   table. The desktop's Pointer tab writes it, and removes it when the mouse is
   set back to the Settings › General value
+- `gesture_hold` for a mouse whose gesture button swipes: how long the button
+  must be held before its travel may commit to a direction, in milliseconds,
+  `0` to `1000`, default `160`. That gate is why a flick released sooner than
+  the default is read as a plain click; lower it for a quick hold-and-flick,
+  raise it if a click whose cursor drifted registers as a swipe. Zero disables
+  the time gate while keeping the movement threshold. Unlike a
+  binding, it is read when the capture session arms, so editing it restores and
+  re-diverts the mouse's captured controls once — set it while the mouse is
+  idle instead of between gestures.
 - `bindings`: a button maps to one action, an independent short/long action
   pair, or a gesture-direction map.
   `Thumbwheel` is the thumb wheel's capacitive tap — it has no GUI control and

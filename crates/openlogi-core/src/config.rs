@@ -52,10 +52,11 @@ pub use function_key::FunctionKey;
 pub use identity::canonical_device_key;
 pub use key_trigger::{KeyModifiers, KeyTrigger, KeyboardConfig, ParseTriggerError};
 pub use revision::ConfigRevision;
+pub(crate) use settings::GESTURE_HOLD_DEFAULT_MS;
 pub use settings::LightSettings;
 pub use settings::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, CameraControls, CameraStreamMode,
-    DeviceViewMode, GKeyOwner, GamingKeyMode, GlideShape, Lighting, MomentumParams,
+    DeviceViewMode, GKeyOwner, GamingKeyMode, GestureHold, GlideShape, Lighting, MomentumParams,
     MomentumScrolling, MouseProfileTarget, OnboardMemory, SMARTSHIFT_AUTO_DISENGAGE_DEFAULT,
     SMARTSHIFT_MIN_AUTO_DISENGAGE, ScrollResolution, SmartShift, ThumbwheelSensitivity, UiScale,
     VerticalScrollSensitivity, WheelMode,
@@ -68,6 +69,8 @@ use crate::binding::{Binding, ButtonId, GestureDirection};
 /// The schema version the current build produces. Bumped whenever the
 /// persisted shape or enum vocabulary changes; readers inspect this value
 /// before consuming the rest of the file.
+///
+/// v12 adds the per-device gesture hold gate. Older files keep the default.
 ///
 /// v11 adds the `[flow]` section for cross-machine device handoff. Nothing
 /// older needs migrating, and a file without it loads as disabled Flow. The
@@ -132,7 +135,7 @@ use crate::binding::{Binding, ButtonId, GestureDirection};
 /// next save; [`Config::load_from_path`] accepts supported versions `1` through
 /// [`SCHEMA_VERSION`] so an invalid or forward file fails loudly instead of
 /// silently losing bindings.
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// Top-level config document.
 #[derive(Debug, Clone, Serialize, Deserialize)]

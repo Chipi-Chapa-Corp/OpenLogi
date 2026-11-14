@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use openlogi_core::binding::{
     Action, Binding, ButtonId, GestureDirection, SwipeAccumulator, default_binding,
 };
-use openlogi_core::config::KeyTrigger;
+use openlogi_core::config::{GestureHold as GestureHoldDelay, KeyTrigger};
 use openlogi_hid::DeviceRoute;
 use openlogi_hook::{
     EventDevice, EventDisposition, Hook, HookEvent, KeyEvent, MouseEvent, source_is_remappable,
@@ -52,6 +52,8 @@ pub struct HookMaps {
     /// The HID++ route of `selected_device`, which names that device's
     /// capture sessions in `diverted_buttons`.
     pub(crate) selected_route: Option<DeviceRoute>,
+    /// Selected device's hold gate, sampled when a gesture press begins.
+    pub(crate) gesture_hold: GestureHoldDelay,
     /// OS-hook buttons that live HID++ capture sessions have diverted,
     /// reported by the sessions themselves. These are hardware observations,
     /// not configuration, so they survive map rebuilds.
@@ -167,9 +169,9 @@ struct GestureHold {
 
 impl GestureHold {
     /// Hold the press the accepted lifecycle `Down` returned.
-    fn new(press: PressToken, now: Instant) -> Self {
+    fn new(press: PressToken, now: Instant, delay: GestureHoldDelay) -> Self {
         let mut swipe = SwipeAccumulator::default();
-        swipe.begin();
+        swipe.begin(delay);
         Self {
             started_at: now,
             press,
@@ -444,22 +446,26 @@ fn handle_button(
     }
     // `try_read` only: a blocking read on the tap thread freezes every pointer
     // event while a config rebuild holds the write lock. Fail open if unavailable.
-    let (binding, is_gesture, pointer, diverted) =
-        hooks.try_read().map_or((None, false, None, None), |maps| {
+    let (binding, is_gesture, pointer, diverted, gesture_hold) = hooks.try_read().map_or(
+        (None, false, None, None, GestureHoldDelay::DEFAULT),
+        |maps| {
             let (binding, is_gesture) = maps.press_binding(id);
             (
                 binding,
                 is_gesture,
                 maps.pointer_press(id),
                 maps.diverted_press(id, device),
+                maps.gesture_hold,
             )
-        });
+        },
+    );
     let phase = match diverted {
         Some(diverted) => PressPhase::Diverted(diverted),
         None => start_press(
             id,
             binding,
             is_gesture,
+            gesture_hold,
             ActionDispatchTarget::for_pointer(pointer, capture_safari_pid),
             dispatcher,
         ),
@@ -485,6 +491,7 @@ fn start_press(
     id: ButtonId,
     binding: Option<Binding>,
     is_gesture: bool,
+    gesture_hold: GestureHoldDelay,
     target: ActionDispatchTarget,
     dispatcher: &ActionDispatcher,
 ) -> PressPhase {
@@ -502,7 +509,7 @@ fn start_press(
                 return dispatcher.try_hook_button_down(id, None, target).map_or(
                     PressPhase::Passthrough,
                     |press| PressPhase::HeldAsGesture {
-                        hold: GestureHold::new(press, now),
+                        hold: GestureHold::new(press, now, gesture_hold),
                     },
                 );
             }

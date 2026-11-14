@@ -1077,6 +1077,9 @@ impl Orchestrator {
             // names a link its capture session is not on.
             selected_route: selected.and_then(|device| device.route.clone()),
             shift_bindings,
+            gesture_hold: key
+                .map(|key| self.config.gesture_hold(key))
+                .unwrap_or_default(),
             ..HookMaps::default()
         }
     }
