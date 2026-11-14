@@ -1,0 +1,13 @@
+# Owner: config::GestureHold::DEFAULT; binding::GESTURE_HOLD_FOR_SWIPE derives it.
+id: core-gesture-hold-default-owner
+language: rust
+severity: error
+message: Derive the gesture hold default from GestureHold::DEFAULT instead of repeating 160 ms.
+files:
+  - crates/**/swipe.rs
+rule:
+  kind: integer_literal
+  regex: '^160$'
+  inside:
+    kind: const_item
+    stopBy: end

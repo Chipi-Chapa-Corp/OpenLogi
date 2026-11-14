@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use super::button_map::{deserialize_button_map, deserialize_button_maps_by_app};
 use super::settings::{
-    CameraControls, CameraStreamMode, GKeyOwner, GamingKeyMode, GestureOwner, LightSettings,
-    Lighting, MomentumScrolling, OnboardMemory, ScrollResolution, SmartShift,
+    CameraControls, CameraStreamMode, GKeyOwner, GamingKeyMode, GestureHold, GestureOwner,
+    LightSettings, Lighting, MomentumScrolling, OnboardMemory, ScrollResolution, SmartShift,
     ThumbwheelSensitivity, deserialize_gesture_owner,
 };
 use crate::binding::{
@@ -340,6 +340,18 @@ pub struct DeviceConfig {
     /// The GUI clears it when the device is set back to the app-wide value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub momentum_scrolling: Option<MomentumScrolling>,
+    /// How long this device's gesture button must be held before its travel may
+    /// commit to a swipe direction. `None` uses the runtime default
+    /// ([`GESTURE_HOLD_FOR_SWIPE`](crate::binding::GESTURE_HOLD_FOR_SWIPE), the
+    /// validated [`GestureHold::DEFAULT`], 160 ms) and is omitted from
+    /// `config.toml`. Lowering it lets a quick hold-and-flick register as a
+    /// swipe instead of a plain click on release.
+    ///
+    /// Unlike `thumbwheel_sensitivity`, this value is read when a capture
+    /// session arms, so editing it restores and re-diverts the device's
+    /// captured controls instead of hot-replacing them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gesture_hold: Option<GestureHold>,
     /// Physical config keys of pointing devices that follow this keyboard's
     /// host switch channel. The relationship is keyboard-initiated: pressing
     /// one of this device's host keys switches every listed target first, then
@@ -514,6 +526,7 @@ impl Default for DeviceConfig {
             scroll_resolution: None,
             smooth_wheel: false,
             momentum_scrolling: None,
+            gesture_hold: None,
             host_switch_targets: Vec::new(),
             fn_lock: None,
             keep_os_layout: None,
@@ -679,6 +692,7 @@ struct RawDeviceConfig {
     smooth_wheel: bool,
     #[serde(default)]
     momentum_scrolling: Option<MomentumScrolling>,
+    gesture_hold: Option<GestureHold>,
     #[serde(default)]
     host_switch_targets: Vec<String>,
     #[serde(default)]
@@ -764,6 +778,7 @@ impl From<RawDeviceConfig> for DeviceConfig {
             scroll_resolution: raw.scroll_resolution,
             smooth_wheel: raw.smooth_wheel,
             momentum_scrolling: raw.momentum_scrolling,
+            gesture_hold: raw.gesture_hold,
             host_switch_targets: raw.host_switch_targets,
             fn_lock: raw.fn_lock,
             keep_os_layout: raw.keep_os_layout,
@@ -785,7 +800,18 @@ impl From<RawDeviceConfig> for DeviceConfig {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{DeviceConfig, DisableKey, KeypadPage};
+    use super::{DeviceConfig, DisableKey, GestureHold, KeypadPage};
+
+    #[test]
+    fn gesture_hold_round_trips_and_rejects_out_of_range() {
+        let config: DeviceConfig = toml::from_str("gesture_hold = 80").expect("valid hold");
+        assert_eq!(config.gesture_hold.map(u16::from), Some(80));
+        // Below the floor and above the ceiling both fail the file, not just
+        // the field: an out-of-range value must never reach the runtime.
+        let immediate: DeviceConfig = toml::from_str("gesture_hold = 0").expect("no hold gate");
+        assert_eq!(immediate.gesture_hold, Some(GestureHold::MIN));
+        toml::from_str::<DeviceConfig>("gesture_hold = 2000").unwrap_err();
+    }
 
     #[test]
     fn host_switch_targets_round_trip_as_physical_keys() -> Result<(), Box<dyn std::error::Error>> {
