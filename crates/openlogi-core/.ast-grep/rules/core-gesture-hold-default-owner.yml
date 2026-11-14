@@ -6,8 +6,8 @@ message: Derive the gesture hold default from GestureHold::DEFAULT instead of re
 files:
   - crates/**/swipe.rs
 rule:
-  kind: integer_literal
-  regex: '^160$'
+  kind: call_expression
+  regex: 'Duration::from_millis\(\s*160\s*\)'
   inside:
     kind: const_item
     stopBy: end

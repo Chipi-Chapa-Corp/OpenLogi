@@ -13,9 +13,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use openlogi_core::binding::{
-    Action, Binding, ButtonId, GestureDirection, SwipeAccumulator, default_binding,
+    Action, Binding, ButtonId, GestureDirection, SwipeAccumulator, SwipeThresholds, default_binding,
 };
-use openlogi_core::config::{GestureHold as GestureHoldDelay, KeyTrigger};
+use openlogi_core::config::KeyTrigger;
 use openlogi_hid::DeviceRoute;
 use openlogi_hook::{
     EventDevice, EventDisposition, Hook, HookEvent, KeyEvent, MouseEvent, source_is_remappable,
@@ -44,6 +44,9 @@ pub struct HookMaps {
     /// gesture mode), so a hold+swipe resolves to a bound action. HID++
     /// gesture sources use the gesture watcher's separate map instead.
     pub gestures: BTreeMap<ButtonId, BTreeMap<GestureDirection, Action>>,
+    /// The hold gate and classification limits OS-hook swipes commit under,
+    /// from the selected device's gesture sensitivity and axis bias.
+    pub gesture_thresholds: SwipeThresholds,
     /// The pointer context that selected this snapshot, or `None` for the
     /// focused policy.
     pub(crate) pointer: Option<PointerSelection>,
@@ -52,8 +55,6 @@ pub struct HookMaps {
     /// The HID++ route of `selected_device`, which names that device's
     /// capture sessions in `diverted_buttons`.
     pub(crate) selected_route: Option<DeviceRoute>,
-    /// Selected device's hold gate, sampled when a gesture press begins.
-    pub(crate) gesture_hold: GestureHoldDelay,
     /// OS-hook buttons that live HID++ capture sessions have diverted,
     /// reported by the sessions themselves. These are hardware observations,
     /// not configuration, so they survive map rebuilds.
@@ -169,9 +170,9 @@ struct GestureHold {
 
 impl GestureHold {
     /// Hold the press the accepted lifecycle `Down` returned.
-    fn new(press: PressToken, now: Instant, delay: GestureHoldDelay) -> Self {
+    fn new(press: PressToken, now: Instant, thresholds: SwipeThresholds) -> Self {
         let mut swipe = SwipeAccumulator::default();
-        swipe.begin(delay);
+        swipe.begin_with_config(thresholds);
         Self {
             started_at: now,
             press,
@@ -446,8 +447,8 @@ fn handle_button(
     }
     // `try_read` only: a blocking read on the tap thread freezes every pointer
     // event while a config rebuild holds the write lock. Fail open if unavailable.
-    let (binding, is_gesture, pointer, diverted, gesture_hold) = hooks.try_read().map_or(
-        (None, false, None, None, GestureHoldDelay::DEFAULT),
+    let (binding, is_gesture, pointer, diverted, gesture_thresholds) = hooks.try_read().map_or(
+        (None, false, None, None, SwipeThresholds::DEFAULT),
         |maps| {
             let (binding, is_gesture) = maps.press_binding(id);
             (
@@ -455,7 +456,7 @@ fn handle_button(
                 is_gesture,
                 maps.pointer_press(id),
                 maps.diverted_press(id, device),
-                maps.gesture_hold,
+                maps.gesture_thresholds,
             )
         },
     );
@@ -465,7 +466,7 @@ fn handle_button(
             id,
             binding,
             is_gesture,
-            gesture_hold,
+            gesture_thresholds,
             ActionDispatchTarget::for_pointer(pointer, capture_safari_pid),
             dispatcher,
         ),
@@ -491,7 +492,7 @@ fn start_press(
     id: ButtonId,
     binding: Option<Binding>,
     is_gesture: bool,
-    gesture_hold: GestureHoldDelay,
+    gesture_thresholds: SwipeThresholds,
     target: ActionDispatchTarget,
     dispatcher: &ActionDispatcher,
 ) -> PressPhase {
@@ -509,7 +510,7 @@ fn start_press(
                 return dispatcher.try_hook_button_down(id, None, target).map_or(
                     PressPhase::Passthrough,
                     |press| PressPhase::HeldAsGesture {
-                        hold: GestureHold::new(press, now, gesture_hold),
+                        hold: GestureHold::new(press, now, gesture_thresholds),
                     },
                 );
             }

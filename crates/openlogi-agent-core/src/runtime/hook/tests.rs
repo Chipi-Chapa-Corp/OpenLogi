@@ -3,7 +3,7 @@
 use super::*;
 use crate::runtime::FocusBinding;
 use openlogi_core::binding::{GESTURE_SWIPE_THRESHOLD, LongPressBinding};
-use openlogi_core::config::KeyModifiers;
+use openlogi_core::config::{GestureHold as GestureHoldDelay, KeyModifiers};
 
 fn token(id: u64, button: ButtonId) -> PressToken {
     PressToken::hook_for_test(id, button)
@@ -63,14 +63,14 @@ fn test_dispatcher() -> (
 /// A hold of `press` begun now.
 fn held(press: PressToken) -> PressPhase {
     PressPhase::HeldAsGesture {
-        hold: GestureHold::new(press, Instant::now(), GestureHoldDelay::DEFAULT),
+        hold: GestureHold::new(press, Instant::now(), SwipeThresholds::DEFAULT),
     }
 }
 
 /// A hold of `press` already past the swipe gate, so its next long-enough
 /// motion commits.
 fn held_for_swipe(press: PressToken) -> PressPhase {
-    let mut hold = GestureHold::new(press, Instant::now(), GestureHoldDelay::DEFAULT);
+    let mut hold = GestureHold::new(press, Instant::now(), SwipeThresholds::DEFAULT);
     hold.swipe.backdate_hold_for_test();
     PressPhase::HeldAsGesture { hold }
 }
@@ -166,7 +166,11 @@ fn a_configured_hold_gate_reaches_the_os_hook_hold() {
     // Past the old fixed 320 ms backdate, so this commits only when the gate
     // travelled from the caller into the accumulator and backdating used it.
     let press = token(1, ButtonId::Back);
-    let mut hold = GestureHold::new(press.clone(), Instant::now(), GestureHoldDelay::MAX);
+    let mut hold = GestureHold::new(
+        press.clone(),
+        Instant::now(),
+        SwipeThresholds::DEFAULT.with_hold(GestureHoldDelay::MAX),
+    );
     hold.swipe.backdate_hold_for_test();
 
     assert_eq!(
@@ -174,6 +178,22 @@ fn a_configured_hold_gate_reaches_the_os_hook_hold() {
         Some(GestureDirection::Right)
     );
     assert_eq!(hold.end(), (press, false));
+}
+
+#[test]
+fn a_hold_applies_the_thresholds_it_began_with() {
+    // 60 units is a swipe at the default travel but short of the least
+    // sensitive setting's 80, so this hold releases as a click.
+    let press = token(1, ButtonId::Back);
+    let least_sensitive = SwipeThresholds::from((
+        openlogi_core::config::GestureSensitivity::MIN,
+        openlogi_core::config::GestureAxisBias::DEFAULT,
+    ));
+    let mut hold = GestureHold::new(press.clone(), Instant::now(), least_sensitive);
+    hold.swipe.backdate_hold_for_test();
+
+    assert_eq!(hold.swipe.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0), None);
+    assert_eq!(hold.end(), (press, true));
 }
 
 #[test]
@@ -211,7 +231,7 @@ fn an_aged_hold_yields_to_a_new_buttons_press() {
             hold: GestureHold::new(
                 token(1, ButtonId::Back),
                 pressed_at,
-                GestureHoldDelay::DEFAULT,
+                SwipeThresholds::DEFAULT,
             ),
         },
     );

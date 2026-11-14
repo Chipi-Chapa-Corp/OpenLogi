@@ -697,3 +697,15 @@ Top = { action = { CustomShortcut = "Cmd+Shift+P" }, icon = "Keyboard", label = 
 ```
 
 `ShowActionsRing` is rejected inside a ring slot to prevent recursive rings.
+
+### Gesture tuning
+
+`app_settings.gesture_sensitivity` (1–100, default 50) scales the hold gate and
+movement thresholds. `gesture_axis_bias` (-50–50, default 0) favors horizontal
+swipes below zero and vertical swipes above zero. Each device can override
+either setting; absent overrides follow the app-wide settings. The Pointer
+page shows the app defaults and can restore inheritance.
+
+An explicit per-device `gesture_hold` takes precedence over sensitivity's hold
+gate. Set it to zero for immediate movement-based gestures without changing
+the movement thresholds. Default settings preserve upstream behavior.

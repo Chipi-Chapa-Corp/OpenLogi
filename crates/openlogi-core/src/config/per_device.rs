@@ -10,12 +10,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     CameraControls, CameraStreamMode, Config, DeviceIdentity, DisableKey, GKeyOwner, GamingKeyMode,
-    GestureHold, LightSettings, Lighting, MomentumScrolling, OnboardMemory, ScrollResolution,
-    SmartShift, ThumbwheelSensitivity,
+    GestureAxisBias, GestureHold, GestureSensitivity, LightSettings, Lighting, MomentumScrolling,
+    OnboardMemory, ScrollResolution, SmartShift, ThumbwheelSensitivity,
 };
 use crate::binding::{
     Action, ActionRingConfig, ActionRingIcon, ActionRingSize, ActionRingSlot, Binding, ButtonId,
-    GKeyProfile, GamingLayout, KeypadPage, RingAction, default_binding_on,
+    GKeyProfile, GamingLayout, KeypadPage, RingAction, SwipeThresholds, default_binding_on,
 };
 use crate::hid::{Dpi, PointerSpeed, ReportRate};
 
@@ -757,8 +757,8 @@ impl Config {
     /// The hold gate for `device_key`'s gesture swipes: the device's
     /// `gesture_hold`, or [`GestureHold::DEFAULT`] (160 ms) when unset.
     ///
-    /// Both capture paths resolve the gate through this one accessor, so the
-    /// HID++ and OS-hook paths can never disagree about it.
+    /// Capture paths use [`Self::gesture_thresholds`] to combine this explicit
+    /// override with motion sensitivity and axis bias.
     #[must_use]
     pub fn gesture_hold(&self, device_key: &str) -> GestureHold {
         self.devices
@@ -774,11 +774,92 @@ impl Config {
             .or_default()
             .smooth_wheel = enabled;
     }
+
+    /// The effective gesture sensitivity for `device_key`: the device's
+    /// override when set, else the app-wide default.
+    #[must_use]
+    pub fn gesture_sensitivity(&self, device_key: &str) -> GestureSensitivity {
+        self.devices
+            .get(device_key)
+            .and_then(|d| d.gesture_sensitivity)
+            .unwrap_or(self.app_settings.gesture_sensitivity)
+    }
+
+    /// Set (or clear, with `None`) `device_key`'s gesture sensitivity
+    /// override.
+    pub fn set_device_gesture_sensitivity(
+        &mut self,
+        device_key: &str,
+        sensitivity: Option<GestureSensitivity>,
+    ) {
+        self.devices
+            .entry(device_key.to_string())
+            .or_default()
+            .gesture_sensitivity = sensitivity;
+    }
+
+    /// The swipe thresholds `device_key`'s effective gesture sensitivity and
+    /// axis bias resolve to.
+    #[must_use]
+    pub fn gesture_thresholds(&self, device_key: &str) -> SwipeThresholds {
+        let thresholds = SwipeThresholds::from((
+            self.gesture_sensitivity(device_key),
+            self.gesture_axis_bias(device_key),
+        ));
+        self.devices
+            .get(device_key)
+            .and_then(|device| device.gesture_hold)
+            .map_or(thresholds, |hold| thresholds.with_hold(hold))
+    }
+
+    /// The effective gesture axis bias for `device_key`: the device's
+    /// override when set, else the app-wide default.
+    #[must_use]
+    pub fn gesture_axis_bias(&self, device_key: &str) -> GestureAxisBias {
+        self.devices
+            .get(device_key)
+            .and_then(|d| d.gesture_axis_bias)
+            .unwrap_or(self.app_settings.gesture_axis_bias)
+    }
+
+    /// Set (or clear, with `None`) `device_key`'s gesture axis bias
+    /// override.
+    pub fn set_device_gesture_axis_bias(
+        &mut self,
+        device_key: &str,
+        bias: Option<GestureAxisBias>,
+    ) {
+        self.devices
+            .entry(device_key.to_string())
+            .or_default()
+            .gesture_axis_bias = bias;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Config;
+
+    #[test]
+    fn explicit_hold_overrides_timing_without_scaling_motion_sensitivity() {
+        use crate::config::{GestureHold, GestureSensitivity};
+
+        let mut config = Config::default();
+        config.app_settings.gesture_sensitivity = GestureSensitivity::MAX;
+        let inherited = config.gesture_thresholds("mouse");
+        assert_eq!(inherited.hold, std::time::Duration::from_millis(64));
+        assert_eq!(inherited.horizontal.travel, 20);
+        config
+            .devices
+            .entry("mouse".into())
+            .or_default()
+            .gesture_hold = Some(GestureHold::MIN);
+        let immediate = config.gesture_thresholds("mouse");
+        assert!(immediate.hold.is_zero());
+        assert_eq!(immediate.horizontal, inherited.horizontal);
+        assert_eq!(immediate.vertical, inherited.vertical);
+        assert_eq!(immediate.deadzone, inherited.deadzone);
+    }
 
     #[test]
     fn host_switch_target_edits_are_idempotent_and_ordered() {

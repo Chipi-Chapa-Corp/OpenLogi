@@ -1,9 +1,10 @@
 //! General settings page.
 
 use super::{
-    App, AppState, Entity, FluentBuilder, IconName, InteractiveElement, ParentElement,
-    SettingField, SettingGroup, SettingItem, SettingPage, SharedString, Slider, SliderState,
-    Styled, ThumbwheelSensitivity, VerticalScrollSensitivity, theme,
+    App, AppState, Entity, FluentBuilder, GestureAxisBias, GestureSensitivity, IconName,
+    InteractiveElement, ParentElement, SettingField, SettingGroup, SettingItem, SettingPage,
+    SharedString, Slider, SliderState, Styled, ThumbwheelSensitivity, VerticalScrollSensitivity,
+    theme,
 };
 use crate::ui::commit_slider::SliderUnit;
 use crate::ui::slider_row::SliderRow;
@@ -18,21 +19,26 @@ use openlogi_core::config::MouseProfileTarget;
 use crate::features::pointer::momentum::MomentumPanel;
 use crate::platform::registration::ServiceStatus;
 
-/// The page's two sensitivity sliders, named so a call site cannot swap two
+/// The page's sensitivity sliders, named so a call site cannot swap two
 /// same-typed `Entity<SliderState>`s without the compiler noticing.
 pub(super) struct SensitivitySliders {
     pub(super) vertical_scroll: Entity<SliderState>,
     pub(super) thumbwheel: Entity<SliderState>,
+    pub(super) gesture: Entity<SliderState>,
+    pub(super) gesture_bias: Entity<SliderState>,
 }
 
 pub(super) fn general_page(
     sliders: SensitivitySliders,
     momentum: Entity<MomentumPanel>,
     registration_status: ServiceStatus,
+    gesture_override_count: usize,
 ) -> SettingPage {
     let SensitivitySliders {
         vertical_scroll,
         thumbwheel,
+        gesture,
+        gesture_bias,
     } = sliders;
     let group = SettingGroup::new()
         .item(mouse_profile_target_item())
@@ -50,6 +56,28 @@ pub(super) fn general_page(
             thumbwheel,
             ThumbwheelSensitivity::MAX,
             ThumbwheelSensitivity::DEFAULT,
+        ))
+        .item(sensitivity_item(
+            tr!("pointer.gesture_sensitivity"),
+            format!(
+                "{} {}",
+                tr!("pointer.gesture_sensitivity_description"),
+                tr!(
+                    "pointer.gesture_override_count",
+                    count = gesture_override_count
+                )
+            )
+            .into(),
+            gesture,
+            GestureSensitivity::MAX,
+            GestureSensitivity::DEFAULT,
+        ))
+        .item(sensitivity_item(
+            tr!("pointer.gesture_axis_bias"),
+            tr!("pointer.gesture_axis_bias_description"),
+            gesture_bias,
+            GestureAxisBias::MAX,
+            GestureAxisBias::DEFAULT,
         ));
     // Only macOS animates a desktop switch, so only macOS shows the switch.
     // `cfg!` keeps the item and its setter compiled, and used, everywhere.
