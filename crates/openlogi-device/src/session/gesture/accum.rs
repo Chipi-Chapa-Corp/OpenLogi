@@ -4,8 +4,7 @@
 
 use std::num::NonZeroU8;
 
-use openlogi_core::binding::{ButtonId, GestureDirection, SwipeAccumulator};
-use openlogi_core::config::GestureHold;
+use openlogi_core::binding::{ButtonId, GestureDirection, SwipeAccumulator, SwipeThresholds};
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
@@ -44,17 +43,17 @@ enum HoldState {
     },
 }
 
-/// Begin a hold for `cid`, its swipe accumulator started fresh and gated by the
-/// device's configured [`GestureHold`].
+/// Begin a hold for `cid`, its swipe accumulator started fresh under
+/// `thresholds`.
 fn begin_hold(
     cid: u16,
     button: ButtonId,
     overlap: bool,
     skip_first_raw_xy: bool,
-    gesture_hold: GestureHold,
+    thresholds: SwipeThresholds,
 ) -> HoldState {
     let mut swipe = SwipeAccumulator::default();
-    swipe.begin(gesture_hold);
+    swipe.begin_with_config(thresholds);
     HoldState::Holding {
         cid,
         button,
@@ -70,9 +69,6 @@ fn begin_hold(
 pub(super) struct CaptureAccum {
     /// The hold owning raw-XY motion, if any (see [`HoldState`]).
     hold: HoldState,
-    /// Gate applied to every hold this accumulator begins, from the device's
-    /// `gesture_hold` setting.
-    gesture_hold: GestureHold,
     /// The armed gesture sources held in the last event, for edge detection:
     /// a source not previously held that becomes the holder is a fresh touch
     /// (its first raw-XY sample is then stale and discarded).
@@ -83,19 +79,22 @@ pub(super) struct CaptureAccum {
     /// Diverted standard-button and wheel-hold CIDs held in the last event,
     /// in press order.
     buttons_down: Vec<u16>,
+    /// The thresholds every hold's swipe accumulator starts with.
+    thresholds: SwipeThresholds,
 }
 
 impl CaptureAccum {
-    /// Apply the device's gesture hold to every hold this accumulator begins
-    /// from now on.
-    pub(super) fn with_gesture_hold(mut self, gesture_hold: GestureHold) -> Self {
-        self.gesture_hold = gesture_hold;
-        self
+    /// A fresh accumulator whose holds commit under `thresholds`.
+    pub(super) fn new(thresholds: SwipeThresholds) -> Self {
+        Self {
+            thresholds,
+            ..Self::default()
+        }
     }
 
-    /// The hold gate this accumulator currently applies.
-    pub(super) fn gesture_hold(&self) -> GestureHold {
-        self.gesture_hold
+    /// The thresholds this accumulator's holds commit under.
+    pub(super) fn thresholds(&self) -> SwipeThresholds {
+        self.thresholds
     }
 }
 
@@ -202,7 +201,7 @@ impl CaptureAccum {
                                 button,
                                 held.len() > 1,
                                 !self.gestures_down.contains(&cid),
-                                self.gesture_hold,
+                                self.thresholds,
                             ),
                             None => HoldState::Idle,
                         }

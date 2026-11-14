@@ -411,7 +411,6 @@ pub fn plan_for_device(
     let thumbwheel_sensitivity = config.thumbwheel_sensitivity(config_key);
     // One accessor for both capture paths; `plan_for_device` keeps its own
     // length budget, so the value is read once into a local.
-    let gesture_hold = config.gesture_hold(config_key);
     DeviceCapturePlan {
         target: CaptureTarget {
             physical_key,
@@ -431,7 +430,7 @@ pub fn plan_for_device(
                 // its current link, so the orchestrator fills it in.
                 divert_main_wheel: None,
                 onboard: None,
-                gesture_hold,
+                gesture_thresholds: config.gesture_thresholds(config_key),
             },
             rearm_generation,
         },

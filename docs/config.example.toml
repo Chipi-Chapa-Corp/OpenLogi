@@ -3,6 +3,9 @@ schema_version = 12
 selected_device = "receiver:aabbccdd:slot:1"
 
 [app_settings]
+# Gesture motion sensitivity (1-100, default 50) and axis bias (-50 to 50).
+gesture_sensitivity = 50
+gesture_axis_bias = 0
 launch_at_login = true
 check_for_updates = false
 auto_install_updates = false

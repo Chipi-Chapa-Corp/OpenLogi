@@ -1,6 +1,7 @@
 //! The capture accumulator: presses, taps, swipes and raw XY across the gesture sources.
 
 use super::*;
+use openlogi_core::config::{GestureAxisBias, GestureSensitivity};
 
 const GESTURE: &[u16] = &[reprog_controls::GESTURE_BUTTON_CID];
 
@@ -55,8 +56,13 @@ fn a_configured_hold_gate_reaches_the_hidpp_hold() {
     // accumulator both stored the configured value and backdates against it.
     // With either bug this swipe stays under the gate and reads as a click.
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut acc = CaptureAccum::default().with_gesture_hold(GestureHold::MAX);
-    assert_eq!(acc.gesture_hold(), GestureHold::MAX);
+    let mut acc = CaptureAccum::new(
+        SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX),
+    );
+    assert_eq!(
+        acc.thresholds(),
+        SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX)
+    );
     handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
     acc.backdate_hold_for_test();
     stale_report(&mut acc, &tx);
@@ -930,4 +936,36 @@ fn raw_wheel_that_cannot_be_attributed_or_scaled_is_dropped() {
         &tx,
     );
     assert_eq!(held_wheel(&mut rx), []);
+}
+
+#[test]
+fn a_hold_commits_under_the_configured_thresholds() {
+    // 60 units right is a swipe at the default 50-unit travel, but the least
+    // sensitive setting needs 80, so the same hold stays a click.
+    for (thresholds, expected) in [
+        (SwipeThresholds::DEFAULT, GestureDirection::Right),
+        (
+            SwipeThresholds::from((GestureSensitivity::MIN, GestureAxisBias::DEFAULT)),
+            GestureDirection::Click,
+        ),
+    ] {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut acc = CaptureAccum::new(thresholds);
+        handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
+        stale_report(&mut acc, &tx);
+        acc.backdate_hold_for_test();
+        handle_reprog(
+            &mut acc,
+            RawControlEvent::RawXy { dx: 60, dy: 0 },
+            GESTURE,
+            &[],
+            &[],
+            &tx,
+        );
+        handle_reprog(&mut acc, release(), GESTURE, &[], &[], &tx);
+        assert_eq!(
+            next_gesture(&mut rx),
+            Ok(CapturedInput::Gesture(ButtonId::GestureButton, expected))
+        );
+    }
 }

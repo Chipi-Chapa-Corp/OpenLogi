@@ -12,10 +12,16 @@ fn resetting_input_state_keeps_the_configured_hold_gate() {
     // `reset_input_state` rebuilds the accumulator after a reconnect; it must
     // carry the configured gate across, or a device set to 400 ms silently
     // returns to 160 ms the first time it wakes.
-    let capture = GestureCapture::new(ArmedControls::default(), GestureHold::MAX);
+    let capture = GestureCapture::new(
+        ArmedControls::default(),
+        SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX),
+    );
     capture.reset_input_state();
     let accum = capture.accum.lock().unwrap_or_else(PoisonError::into_inner);
-    assert_eq!(accum.gesture_hold(), GestureHold::MAX);
+    assert_eq!(
+        accum.thresholds(),
+        SwipeThresholds::DEFAULT.with_hold(openlogi_core::config::GestureHold::MAX)
+    );
 }
 
 #[tokio::test]

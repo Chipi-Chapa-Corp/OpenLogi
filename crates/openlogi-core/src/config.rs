@@ -56,10 +56,10 @@ pub(crate) use settings::GESTURE_HOLD_DEFAULT_MS;
 pub use settings::LightSettings;
 pub use settings::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, CameraControls, CameraStreamMode,
-    DeviceViewMode, GKeyOwner, GamingKeyMode, GestureHold, GlideShape, Lighting, MomentumParams,
-    MomentumScrolling, MouseProfileTarget, OnboardMemory, SMARTSHIFT_AUTO_DISENGAGE_DEFAULT,
-    SMARTSHIFT_MIN_AUTO_DISENGAGE, ScrollResolution, SmartShift, ThumbwheelSensitivity, UiScale,
-    VerticalScrollSensitivity, WheelMode,
+    DeviceViewMode, GKeyOwner, GamingKeyMode, GestureAxisBias, GestureHold, GestureSensitivity,
+    GlideShape, Lighting, MomentumParams, MomentumScrolling, MouseProfileTarget, OnboardMemory,
+    SMARTSHIFT_AUTO_DISENGAGE_DEFAULT, SMARTSHIFT_MIN_AUTO_DISENGAGE, ScrollResolution, SmartShift,
+    ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity, WheelMode,
 };
 
 use crate::app::AppAliases;
@@ -70,7 +70,7 @@ use crate::binding::{Binding, ButtonId, GestureDirection};
 /// persisted shape or enum vocabulary changes; readers inspect this value
 /// before consuming the rest of the file.
 ///
-/// v12 adds the per-device gesture hold gate. Older files keep the default.
+/// v12 adds gesture hold, sensitivity and axis-bias settings. Older files keep the defaults.
 ///
 /// v11 adds the `[flow]` section for cross-machine device handoff. Nothing
 /// older needs migrating, and a file without it loads as disabled Flow. The
