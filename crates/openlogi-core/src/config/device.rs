@@ -716,6 +716,7 @@ struct RawDeviceConfig {
     #[serde(default)]
     momentum_scrolling: Option<MomentumScrolling>,
     gesture_hold: Option<GestureHold>,
+    #[serde(default)]
     gesture_repeat_distance: Option<GestureRepeatDistance>,
     #[serde(default)]
     host_switch_targets: Vec<String>,
